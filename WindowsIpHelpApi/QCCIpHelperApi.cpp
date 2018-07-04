@@ -10,6 +10,9 @@
 
 #pragma comment(lib, "IPHLPAPI.lib")
 
+#define HPMALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
+#define HPFREE(x) HeapFree(GetProcessHeap(), 0, (x))
+
 using namespace std;
 
 void QCCShowAllAdaptersInfo()
@@ -130,10 +133,59 @@ void QCCShowNetworkParams()
 	}
 }
 
+void QCCShowInterfaceNumInfo()
+{
+	DWORD pInterNum;
+	if (GetNumberOfInterfaces(&pInterNum) == NO_ERROR)
+		cout << "网络接口数量: " << pInterNum << endl;
+	else
+		cout << "获取网络接口数量失败! " << endl;
+}
+
+void QCCShowInterfaceDetailInfo()
+{
+	PIP_INTERFACE_INFO pInterFaceInfo;
+	ULONG bufferLength;
+
+	if (GetInterfaceInfo(NULL, &bufferLength) == ERROR_INSUFFICIENT_BUFFER)
+	{
+		pInterFaceInfo = (IP_INTERFACE_INFO*)HPMALLOC(bufferLength);
+		if (pInterFaceInfo == NULL)
+		{
+			cout << "无法分配内存空间给IP_INTERFACE_INFO ! " << endl;
+			return;
+		}
+	}
+
+	if (GetInterfaceInfo(pInterFaceInfo, &bufferLength) == NO_ERROR)
+	{
+		cout << "网络适配器数量: " << pInterFaceInfo->NumAdapters << endl;
+		for (LONG i = 0; i < pInterFaceInfo->NumAdapters; i++)
+		{
+			cout << "网络适配器索引[" << i << "]: " << pInterFaceInfo->Adapter[i].Index << endl;
+			wcout << "网络适配器名称[" << i << "]: " << pInterFaceInfo->Adapter[i].Name << endl;
+		}
+	}
+	else if (GetInterfaceInfo(pInterFaceInfo, &bufferLength) == ERROR_NO_DATA)
+	{
+		cout << "本地计算机没有支持Ipv4的网络适配器 ! " << endl;
+		return;
+	}
+	else
+	{
+		cout << "本地计算机网络接口获取失败 ! " << endl;
+		return;
+	}
+
+	HPFREE(pInterFaceInfo);
+}
+
 int main()
 {
 	QCCShowAllAdaptersInfo();
 	QCCShowNetworkParams();
+	QCCShowInterfaceNumInfo();
+	QCCShowInterfaceDetailInfo();
 	getchar();
     return 0;
 }
