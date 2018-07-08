@@ -64,6 +64,17 @@ int main()
 		return -1;
 	}
 
+	//设置socket为非阻塞模式
+	int iMode = 1;
+	errCode = ioctlsocket(qSrvSocket, FIONBIO, (u_long FAR*)&iMode);
+	if (errCode == SOCKET_ERROR)
+	{
+		cout << "ioctl socket to non blocking failed! " << endl;
+		closesocket(qSrvSocket);
+		WSACleanup();
+		return -1;
+	}
+
 	//bind函数将本地地址与一个socket绑定在一起
 	struct sockaddr_in qAddr;
 	int qAddrlength = sizeof(struct sockaddr_in);
@@ -77,6 +88,7 @@ int main()
 	if (errCode == SOCKET_ERROR)
 	{
 		cout << "Socket bind error ! Error code is : " << WSAGetLastError() << endl;
+		closesocket(qSrvSocket);
 		WSACleanup();
 		getchar();
 		return -1;
@@ -87,6 +99,7 @@ int main()
 	if (errCode == SOCKET_ERROR)
 	{
 		cout << "Socket listen error ! Error code is : " << WSAGetLastError() << endl;
+		closesocket(qSrvSocket);
 		WSACleanup();
 		getchar();
 		return -1;
@@ -97,18 +110,35 @@ int main()
 	getchar();
 	sockaddr_in qCliAddr;
 	int acceptLength = sizeof(qCliAddr);
-	qCliSocket = accept(qSrvSocket, (sockaddr FAR*)&qCliAddr, &acceptLength);
-	if (qCliSocket == INVALID_SOCKET)
+
+	//非阻塞模式while循环accept
+	while (true)
 	{
-		cout << "Socket accept error ! Error code is : " << WSAGetLastError() << endl;
-		WSACleanup();
-		getchar();
-		return -1;
-	}
-	else
-	{
-		cout << "Socket connect address info is : " << inet_ntoa(qCliAddr.sin_addr) << endl;
-		getchar();
+		qCliSocket = accept(qSrvSocket, (sockaddr FAR*)&qCliAddr, &acceptLength);
+		if (qCliSocket == INVALID_SOCKET)
+		{
+			int err = WSAGetLastError();
+			if (err == WSAEWOULDBLOCK)
+			{
+				cout << "Waiting client for connect processing !" << endl;
+				Sleep(1000);
+				continue;
+			}
+			else
+			{
+				cout << "Socket accept error ! Error code is : " << WSAGetLastError() << endl;
+				closesocket(qSrvSocket);
+				WSACleanup();
+				getchar();
+				return -1;
+			}
+			break;
+		}
+		else
+		{
+			cout << "Socket connect address info is : " << inet_ntoa(qCliAddr.sin_addr) << endl;
+			getchar();
+		}
 	}
 
 	//while循环接收
@@ -118,11 +148,21 @@ int main()
 		errCode = recv(qCliSocket, buffer, BUF_SIZE, 0);
 		if (errCode == SOCKET_ERROR)
 		{
-			cout << "Recv failed ! Error code is : " << WSAGetLastError() << endl;
-			closesocket(qSrvSocket);
-			closesocket(qCliSocket);
-			WSACleanup();
-			return -1;
+			int er = WSAGetLastError();
+			if (er == WSAEWOULDBLOCK)
+			{
+				cout << "No data from buffer on non blocking mode begining!" << endl;
+				Sleep(1000);
+				continue;
+			}
+			else
+			{
+				cout << "Recv failed ! Error code is : " << WSAGetLastError() << endl;
+				closesocket(qSrvSocket);
+				closesocket(qCliSocket);
+				WSACleanup();
+				return -1;
+			}
 		}
 
 		string curTime = QccGetCurrentTime();
@@ -137,14 +177,28 @@ int main()
 		{
 			char srvMessage[BUF_SIZE];
 			sprintf(srvMessage, "Message recv -- %s", buffer);
-			errCode = send(qCliSocket, srvMessage, sizeof(srvMessage), 0);
-			if (errCode == SOCKET_ERROR)
+			while (true)
 			{
-				cout << "Send failed ! Error code is : " << WSAGetLastError() << endl;
-				closesocket(qSrvSocket);
-				closesocket(qCliSocket);
-				WSACleanup();
-				return -1;
+				errCode = send(qCliSocket, srvMessage, sizeof(srvMessage), 0);
+				if (errCode == SOCKET_ERROR)
+				{
+					int errr = WSAGetLastError();
+					if (errr == WSAEWOULDBLOCK)
+					{
+						cout << "can not finish non blocking mode opreation !" << endl;
+						Sleep(1000);
+						continue;
+					}
+					else
+					{
+						cout << "Send failed ! Error code is : " << WSAGetLastError() << endl;
+						closesocket(qSrvSocket);
+						closesocket(qCliSocket);
+						WSACleanup();
+						return -1;
+					}
+				}
+				break;
 			}
 		}
 	}
