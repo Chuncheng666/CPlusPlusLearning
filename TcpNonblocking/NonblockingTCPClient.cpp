@@ -46,20 +46,47 @@ int main()
 		return -1;
 	}
 
+	int iMode = 1;
+	errCode = ioctlsocket(qHostSocket, FIONBIO, (u_long FAR*)&iMode);
+	if (errCode == SOCKET_ERROR)
+	{
+		cout << "ioctl socket to non blocking failed! " << endl;
+		closesocket(qHostSocket);
+		WSACleanup();
+		return -1;
+	}
+
 	SOCKADDR_IN srvAddr;
 	srvAddr.sin_family = AF_INET;
 	srvAddr.sin_addr.S_un.S_addr = inet_addr(ipAddress);
 	srvAddr.sin_port = htons(port);
 	int srvAddressLength = sizeof(srvAddr);
 
-	errCode = connect(qHostSocket, (LPSOCKADDR)&srvAddr, srvAddressLength);
-	if (errCode == SOCKET_ERROR)
+	while (true)
 	{
-		cout << "Socket connect error ! Error code is : " << WSAGetLastError() << endl;
-		closesocket(qHostSocket);
-		WSACleanup();
-		getchar();
-		return -1;
+		errCode = connect(qHostSocket, (LPSOCKADDR)&srvAddr, srvAddressLength);
+		if (errCode == SOCKET_ERROR)
+		{
+			int err = WSAGetLastError();
+			if (err == WSAEWOULDBLOCK || err == WSAEINVAL)
+			{
+				cout << "can not finish non blocking mode opreation !" << endl;
+				Sleep(1000);
+				continue;
+			}
+			else if (err == WSAEISCONN)//ÒÑÁ¬½Ó
+			{
+				break;
+			}
+			else
+			{
+				cout << "Socket connect error ! Error code is : " << WSAGetLastError() << endl;
+				closesocket(qHostSocket);
+				WSACleanup();
+				getchar();
+				return -1;
+			}
+		}
 	}
 
 	while (true)
@@ -71,17 +98,55 @@ int main()
 
 		ZeroMemory(buffer, BUF_SIZE);
 		strcpy(buffer, str.c_str());
-		errCode = send(qHostSocket, buffer, strlen(buffer), 0);
-		if (errCode == SOCKET_ERROR)
+		while (true)
 		{
-			cout << "Socket send error ! Error code is : " << WSAGetLastError() << endl;
-			closesocket(qHostSocket);
-			WSACleanup();
-			getchar();
-			return -1;
+			errCode = send(qHostSocket, buffer, strlen(buffer), 0);
+			if (errCode == SOCKET_ERROR)
+			{
+				int er = WSAGetLastError();
+				if (er == WSAEWOULDBLOCK)
+				{
+					cout << "No data from buffer on non blocking mode begining!" << endl;
+					Sleep(1000);
+					continue;
+				}
+				else
+				{
+					cout << "Socket send error ! Error code is : " << WSAGetLastError() << endl;
+					closesocket(qHostSocket);
+					WSACleanup();
+					getchar();
+					return -1;
+				}
+			}
+			break;
 		}
-
-		errCode = recv(qHostSocket, buffer, sizeof(buffer), 0);
+		
+		while (true)
+		{
+			ZeroMemory(buffer, BUF_SIZE);
+			errCode = recv(qHostSocket, buffer, sizeof(buffer), 0);
+			if (errCode == SOCKET_ERROR)
+			{
+				int errr = WSAGetLastError();
+				if (errr == WSAEWOULDBLOCK)
+				{
+					cout << "Waiting Server msg on non blocking mode! " << endl;
+					Sleep(1000);
+					continue;
+				}
+				else if(errr == WSAETIMEDOUT || errr == WSAENETDOWN)
+				{
+					cout << "Socket recv error ! Error code is : " << WSAGetLastError() << endl;
+					closesocket(qHostSocket);
+					WSACleanup();
+					getchar();
+					return -1;
+				}
+				break;
+			}
+			break;
+		}
 		cout << "Recv from server : " << buffer << endl;
 
 		if (strcmp(buffer, "quit") == 0)
